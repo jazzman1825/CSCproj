@@ -17,8 +17,7 @@ mask_files = [file for file in os.listdir(masks_dir) if file.endswith('.jpg')]
 image_files.sort()
 mask_files.sort()
 
-# Function to load a batch of data
-def load_data(image_files, mask_files, batch_size):
+def load_data(image_files, mask_files, batch_size, split_factor_horizontal, split_factor_vertical):
     num_samples = len(image_files)
     while True:
         for start_idx in range(0, num_samples, batch_size):
@@ -35,13 +34,22 @@ def load_data(image_files, mask_files, batch_size):
                 image_path = os.path.join(images_dir, image_file)
                 mask_path = os.path.join(masks_dir, mask_file)
 
-                # Load images
-                image = plt.imread(image_path)
-                images.append(image)
+                # Load original image and mask
+                original_image = plt.imread(image_path)
+                original_mask = plt.imread(mask_path)
+                
+                # Split the original image into smaller parts
+                split_images = []
+                split_masks = []
+                for x in range(0, original_image.shape[0], split_factor_vertical):
+                    for y in range(0, original_image.shape[1], split_factor_horizontal):
+                        split_image = original_image[x:x+split_factor_vertical, y:y+split_factor_horizontal, :]
+                        split_mask = original_mask[x:x+split_factor_vertical, y:y+split_factor_horizontal]
+                        split_images.append(split_image)
+                        split_masks.append(split_mask)
 
-                # Load masks
-                mask = plt.imread(mask_path)
-                masks.append(mask)
+                images.extend(split_images)
+                masks.extend(split_masks)
 
             # Convert lists to numpy arrays
             images = np.array(images)
@@ -53,8 +61,13 @@ def load_data(image_files, mask_files, batch_size):
 
             yield images, masks
 
-batch_size = 32
-train_data_generator = load_data(image_files, mask_files, batch_size)
+
+
+batch_size = 8
+split_factor_horizontal = 400
+split_factor_vertical = 128
+train_data_generator = load_data(image_files, mask_files, batch_size, split_factor_horizontal, split_factor_vertical)
+
 
 #CONFIG
 image_shape = plt.imread(os.path.join(images_dir, image_files[0])).shape
