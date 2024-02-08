@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
-import pickle
-
 from tensorflow import keras
 
 # Define directories for images and masks
@@ -19,41 +17,55 @@ mask_files = [file for file in os.listdir(masks_dir) if file.endswith('.jpg')]
 image_files.sort()
 mask_files.sort()
 
-# Initialize lists to store images and masks
-images = []
-masks = []
+# Function to load a batch of data
+def load_data(image_files, mask_files, batch_size):
+    num_samples = len(image_files)
+    while True:
+        for start_idx in range(0, num_samples, batch_size):
+            end_idx = min(start_idx + batch_size, num_samples)
+            batch_image_files = image_files[start_idx:end_idx]
+            batch_mask_files = mask_files[start_idx:end_idx]
+            
+            # Initialize lists to store images and masks
+            images = []
+            masks = []
+            
+            # Load images and masks for the current batch
+            for image_file, mask_file in zip(batch_image_files, batch_mask_files):
+                image_path = os.path.join(images_dir, image_file)
+                mask_path = os.path.join(masks_dir, mask_file)
 
-# Load images and masks
-for image_file, mask_file in zip(image_files, mask_files):
-    image_path = os.path.join(images_dir, image_file)
-    mask_path = os.path.join(masks_dir, mask_file)
+                # Load images
+                image = plt.imread(image_path)
+                images.append(image)
 
-    # Load images
-    image = plt.imread(image_path)
-    images.append(image)
+                # Load masks
+                mask = plt.imread(mask_path)
+                masks.append(mask)
 
-    # Load masks
-    mask = plt.imread(mask_path)
-    masks.append(mask)
+            # Convert lists to numpy arrays
+            images = np.array(images)
+            masks = np.array(masks)
 
-# Convert lists to numpy arrays
-images = np.array(images)
-masks = np.array(masks)
+            # Scaling
+            images = images / 255 
+            masks = masks / 255
 
-#Scaling
-images = images / 255 
-masks = masks / 255
+            yield images, masks
+
+batch_size = 32
+train_data_generator = load_data(image_files, mask_files, batch_size)
 
 #CONFIG
-image_shape = images[0].shape
+image_shape = plt.imread(os.path.join(images_dir, image_files[0])).shape
 IMG_HEIGHT = image_shape[0]
 IMG_WIDTH = image_shape[1]
 IMG_CHANNELS = image_shape[2]
 
 train_ds = []
 val_ds = []
-for i in range(len(images)):
-    if np.random.rand()<0.2:
+for i in range(len(image_files)):
+    if np.random.rand() < 0.2:
         train_ds.append(i)
     else:
         val_ds.append(i)
@@ -121,10 +133,12 @@ model.compile(
     metrics = ["accuracy"],
 )
 history = model.fit(
-    images[train_ds],masks[train_ds],
+    train_data_generator,
+    steps_per_epoch=len(image_files) // batch_size,
     epochs=epochs,
     callbacks=callbacks,
-    validation_data=(images[val_ds],masks[val_ds]),
+    validation_data=train_data_generator,  # Adjusted to use the same generator for validation
+    validation_steps=len(val_ds) // batch_size,
 )
 
 history_dict = history.history
