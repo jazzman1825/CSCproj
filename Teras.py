@@ -10,8 +10,8 @@ images_dir = "TrainImages"
 masks_dir = "TrainMasks"
 
 # List files in both directories
-image_files = [file for file in os.listdir(images_dir) if file.endswith('.jpg')]
-mask_files = [file for file in os.listdir(masks_dir) if file.endswith('.jpg')]
+image_files = [file for file in os.listdir(images_dir) if file.endswith('.jpg')][:500]
+mask_files = [file for file in os.listdir(masks_dir) if file.endswith('.jpg')][:500]
 
 # Ensure the lists are sorted for proper matching
 image_files.sort()
@@ -63,7 +63,7 @@ def load_data(image_files, mask_files, batch_size, split_factor_horizontal, spli
 
 
 
-batch_size = 8
+batch_size = 1
 split_factor_horizontal = 400
 split_factor_vertical = 128
 train_data_generator = load_data(image_files, mask_files, batch_size, split_factor_horizontal, split_factor_vertical)
@@ -141,7 +141,7 @@ callbacks = [
     keras.callbacks.EarlyStopping(patience = 30, verbose = 1),
     ]
 model.compile(
-    optimizer=keras.optimizers.Adam(1e-4),
+    optimizer=keras.optimizers.legacy.Adam(1e-3),
     loss = "binary_crossentropy",
     metrics = ["accuracy"],
 )
