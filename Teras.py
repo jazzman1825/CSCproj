@@ -1,157 +1,175 @@
 import os
-import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
+import keras
+import numpy as np
+from tensorflow import data as tf_data
+from tensorflow import image as tf_image
+from tensorflow import io as tf_io
 
-from tensorflow import keras
-
-# Define directories for images and masks
-images_dir = "TrainImages"
-masks_dir = "TrainMasks"
-
-# List files in both directories
-image_files = [file for file in os.listdir(images_dir) if file.endswith('.jpg')][:500]
-mask_files = [file for file in os.listdir(masks_dir) if file.endswith('.jpg')][:500]
-
-# Ensure the lists are sorted for proper matching
-image_files.sort()
-mask_files.sort()
-
-def load_data(image_files, mask_files, batch_size, split_factor_horizontal, split_factor_vertical):
-    num_samples = len(image_files)
-    while True:
-        for start_idx in range(0, num_samples, batch_size):
-            end_idx = min(start_idx + batch_size, num_samples)
-            batch_image_files = image_files[start_idx:end_idx]
-            batch_mask_files = mask_files[start_idx:end_idx]
-            
-            # Initialize lists to store images and masks
-            images = []
-            masks = []
-            
-            # Load images and masks for the current batch
-            for image_file, mask_file in zip(batch_image_files, batch_mask_files):
-                image_path = os.path.join(images_dir, image_file)
-                mask_path = os.path.join(masks_dir, mask_file)
-
-                # Load original image and mask
-                original_image = plt.imread(image_path)
-                original_mask = plt.imread(mask_path)
-                
-                # Split the original image into smaller parts
-                split_images = []
-                split_masks = []
-                for x in range(0, original_image.shape[0], split_factor_vertical):
-                    for y in range(0, original_image.shape[1], split_factor_horizontal):
-                        split_image = original_image[x:x+split_factor_vertical, y:y+split_factor_horizontal, :]
-                        split_mask = original_mask[x:x+split_factor_vertical, y:y+split_factor_horizontal]
-                        split_images.append(split_image)
-                        split_masks.append(split_mask)
-
-                images.extend(split_images)
-                masks.extend(split_masks)
-
-            # Convert lists to numpy arrays
-            images = np.array(images)
-            masks = np.array(masks)
-
-            # Scaling
-            images = images / 255 
-            masks = masks / 255
-
-            yield images, masks
+from keras import layers
 
 
+input_dir = "Data/severstal-steel-defect-detection/train_images"
+target_dir = "Data/TrainMasks"
+img_size = (1600, 256)
+num_classes = 1
+batch_size = 32
 
-batch_size = 1
-split_factor_horizontal = 400
-split_factor_vertical = 128
-train_data_generator = load_data(image_files, mask_files, batch_size, split_factor_horizontal, split_factor_vertical)
-
-
-#CONFIG
-image_shape = plt.imread(os.path.join(images_dir, image_files[0])).shape
-IMG_HEIGHT = image_shape[0]
-IMG_WIDTH = image_shape[1]
-IMG_CHANNELS = image_shape[2]
-
-train_ds = []
-val_ds = []
-for i in range(len(image_files)):
-    if np.random.rand() < 0.2:
-        train_ds.append(i)
-    else:
-        val_ds.append(i)
-
-traind_ds = np.array(train_ds)
-val_ds = np.array(val_ds)
-
-# Model def here 
-def make_model(input_shape, num_classes):
-    inputs = keras.Input(shape=input_shape)
-
-    # Contracting Path
-    x = keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
-    c1_residue = x
-    x = keras.layers.MaxPooling2D((2, 2))(x)
-    
-    x = keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    c2_residue = x
-    x = keras.layers.MaxPooling2D((2, 2))(x)
-
-    x = keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-    c3_residue = x
-    x = keras.layers.MaxPooling2D((2, 2))(x)
-
-    x = keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same')(x)
-    c4_residue = x
-    x = keras.layers.MaxPooling2D((2, 2))(x)
-
-    x = keras.layers.Conv2D(1024, (3, 3), activation='relu', padding='same')(x)
-    
-    # Expansive Path    
-    x = keras.layers.Conv2DTranspose(512, (2, 2), strides=(2, 2), padding='same')(x)
-    x = keras.layers.Concatenate()([x, c4_residue])
-    x = keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same')(x)
-    
-    x = keras.layers.Conv2DTranspose(256, (2, 2), strides=(2, 2), padding='same')(x)
-    x = keras.layers.Concatenate()([x, c3_residue])
-    x = keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-   
-    x = keras.layers.Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(x)
-    x = keras.layers.Concatenate()([x, c2_residue])
-    x = keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-   
-    x = keras.layers.Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(x)
-    x = keras.layers.Concatenate()([x, c1_residue])
-    x = keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-
-
-    outputs = keras.layers.Conv2D(num_classes, (1, 1), activation="sigmoid")(x)
-    return keras.Model(inputs, outputs)
-
-model = make_model(input_shape=image_shape, num_classes=1)
-
-#Model Config
-epochs = 50
-#Saving as *.weights.keras according to Keras3 recommendation
-#https://github.com/keras-team/keras-io/issues/1568 - outdated?
-callbacks = [
-    keras.callbacks.ModelCheckpoint("teras.weights.keras", monitor='val_loss', verbose = 1, save_best_only = True, mode = 'min'),
-    keras.callbacks.EarlyStopping(patience = 30, verbose = 1),
+input_img_paths = sorted(
+    [
+        os.path.join(input_dir, fname)
+        for fname in os.listdir(input_dir)
+        if fname.endswith(".jpg")
     ]
-model.compile(
-    optimizer=keras.optimizers.legacy.Adam(1e-3),
-    loss = "binary_crossentropy",
-    metrics = ["accuracy"],
 )
+target_img_paths = sorted(
+    [
+        os.path.join(target_dir, fname)
+        for fname in os.listdir(target_dir)
+        if fname.endswith(".jpg") and not fname.startswith(".")
+    ]
+)
+
+def get_dataset(
+    batch_size,
+    img_size,
+    input_img_paths,
+    target_img_paths,
+    max_dataset_len=None,
+):
+    """Returns a TF Dataset."""
+
+    def load_img_masks(input_img_path, target_img_path):
+        input_img = tf_io.read_file(input_img_path)
+        input_img = tf_io.decode_png(input_img, channels=3)
+        input_img = tf_image.resize(input_img, img_size)
+        input_img = tf_image.convert_image_dtype(input_img, "float32")
+
+        target_img = tf_io.read_file(target_img_path)
+        target_img = tf_io.decode_png(target_img, channels=1)
+        target_img = tf_image.resize(target_img, img_size, method="nearest")
+        target_img = tf_image.convert_image_dtype(target_img, "uint8")
+
+        # Ground truth labels are 1, 2, 3. Subtract one to make them 0, 1, 2:
+        target_img -= 1
+        target_img = target_img / 255
+        return input_img, target_img
+
+    # For faster debugging, limit the size of data
+    if max_dataset_len:
+        input_img_paths = input_img_paths[:max_dataset_len]
+        target_img_paths = target_img_paths[:max_dataset_len]
+    dataset = tf_data.Dataset.from_tensor_slices((input_img_paths, target_img_paths))
+    dataset = dataset.map(load_img_masks, num_parallel_calls=tf_data.AUTOTUNE)
+    return dataset.batch(batch_size)
+
+def get_model(img_size, num_classes):
+    inputs = keras.Input(shape=img_size + (3,))
+
+    ### [First half of the network: downsampling inputs] ###
+
+    # Entry block
+    x = layers.Conv2D(32, 3, strides=2, padding="same")(inputs)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation("relu")(x)
+
+    previous_block_activation = x  # Set aside residual
+
+    # Blocks 1, 2, 3 are identical apart from the feature depth.
+    for filters in [64, 128, 256]:
+        x = layers.Activation("relu")(x)
+        x = layers.SeparableConv2D(filters, 3, padding="same")(x)
+        x = layers.BatchNormalization()(x)
+
+        x = layers.Activation("relu")(x)
+        x = layers.SeparableConv2D(filters, 3, padding="same")(x)
+        x = layers.BatchNormalization()(x)
+
+        x = layers.MaxPooling2D(3, strides=2, padding="same")(x)
+
+        # Project residual
+        residual = layers.Conv2D(filters, 1, strides=2, padding="same")(
+            previous_block_activation
+        )
+        x = layers.add([x, residual])  # Add back residual
+        previous_block_activation = x  # Set aside next residual
+
+    ### [Second half of the network: upsampling inputs] ###
+
+    for filters in [256, 128, 64, 32]:
+        x = layers.Activation("relu")(x)
+        x = layers.Conv2DTranspose(filters, 3, padding="same")(x)
+        x = layers.BatchNormalization()(x)
+
+        x = layers.Activation("relu")(x)
+        x = layers.Conv2DTranspose(filters, 3, padding="same")(x)
+        x = layers.BatchNormalization()(x)
+
+        x = layers.UpSampling2D(2)(x)
+
+        # Project residual
+        residual = layers.UpSampling2D(2)(previous_block_activation)
+        residual = layers.Conv2D(filters, 1, padding="same")(residual)
+        x = layers.add([x, residual])  # Add back residual
+        previous_block_activation = x  # Set aside next residual
+
+    # Add a per-pixel classification layer
+    outputs = layers.Conv2D(num_classes, 3, activation="softmax", padding="same")(x)
+
+    # Define the model
+    model = keras.Model(inputs, outputs)
+    return model
+
+
+# Build model
+model = get_model(img_size, num_classes)
+#model.summary()
+
+import random
+
+# Split our img paths into a training and a validation set
+val_samples = 1000
+random.Random(1337).shuffle(input_img_paths)
+random.Random(1337).shuffle(target_img_paths)
+train_input_img_paths = input_img_paths[:-val_samples]
+train_target_img_paths = target_img_paths[:-val_samples]
+val_input_img_paths = input_img_paths[-val_samples:]
+val_target_img_paths = target_img_paths[-val_samples:]
+
+# Instantiate dataset for each split
+# Limit input files in `max_dataset_len` for faster epoch training time.
+# Remove the `max_dataset_len` arg when running with full dataset.
+train_dataset = get_dataset(
+    batch_size,
+    img_size,
+    train_input_img_paths,
+    train_target_img_paths,
+    max_dataset_len=12568,
+)
+valid_dataset = get_dataset(
+    batch_size, img_size, val_input_img_paths, val_target_img_paths
+)
+
+# Configure the model for training.
+# We use the "sparse" version of categorical_crossentropy
+# because our target data is integers.
+model.compile(
+    optimizer=keras.optimizers.Adam(1e-4), loss="sparse_categorical_crossentropy", metrics=["accuracy"]
+)
+
+callbacks = [
+    keras.callbacks.ModelCheckpoint("oxford_segmentation.keras", save_best_only=True)
+]
+
+# Train the model, doing validation at the end of each epoch.
+epochs = 50
+
 history = model.fit(
-    train_data_generator,
-    steps_per_epoch=len(image_files) // batch_size,
+    train_dataset,
     epochs=epochs,
+    validation_data=valid_dataset,
     callbacks=callbacks,
-    validation_data=train_data_generator,  # Adjusted to use the same generator for validation
-    validation_steps=len(val_ds) // batch_size,
+    verbose=2,
 )
 
 history_dict = history.history
