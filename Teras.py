@@ -12,22 +12,22 @@ from keras import layers
 input_dir = "TrainImages"
 target_dir = "TrainMasks"
 img_size = (1600, 256)
-num_classes = 1
-batch_size = 32
+num_classes = 2
+batch_size = 2
 
 input_img_paths = sorted(
     [
         os.path.join(input_dir, fname)
         for fname in os.listdir(input_dir)
         if fname.endswith(".jpg")
-    ]
+    ][:50]
 )
 target_img_paths = sorted(
     [
         os.path.join(target_dir, fname)
         for fname in os.listdir(target_dir)
         if fname.endswith(".jpg") and not fname.startswith(".")
-    ]
+    ][:50]
 )
 
 def get_dataset(
@@ -128,7 +128,7 @@ model = get_model(img_size, num_classes)
 import random
 
 # Split our img paths into a training and a validation set
-val_samples = 400
+val_samples = 10
 random.Random(1337).shuffle(input_img_paths)
 random.Random(1337).shuffle(target_img_paths)
 train_input_img_paths = input_img_paths[:-val_samples]
@@ -144,7 +144,7 @@ train_dataset = get_dataset(
     img_size,
     train_input_img_paths,
     train_target_img_paths,
-    max_dataset_len=2000,
+    max_dataset_len=50,
 )
 valid_dataset = get_dataset(
     batch_size, img_size, val_input_img_paths, val_target_img_paths
@@ -162,7 +162,7 @@ callbacks = [
 ]
 
 # Train the model, doing validation at the end of each epoch.
-epochs = 50
+epochs = 20
 
 history = model.fit(
     train_dataset,
