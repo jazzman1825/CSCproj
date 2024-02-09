@@ -9,8 +9,8 @@ from tensorflow import io as tf_io
 from keras import layers
 
 
-input_dir = "Data/severstal-steel-defect-detection/train_images"
-target_dir = "Data/TrainMasks"
+input_dir = "TrainImages"
+target_dir = "TrainMasks"
 img_size = (1600, 256)
 num_classes = 1
 batch_size = 32
@@ -128,7 +128,7 @@ model = get_model(img_size, num_classes)
 import random
 
 # Split our img paths into a training and a validation set
-val_samples = 1000
+val_samples = 400
 random.Random(1337).shuffle(input_img_paths)
 random.Random(1337).shuffle(target_img_paths)
 train_input_img_paths = input_img_paths[:-val_samples]
@@ -144,7 +144,7 @@ train_dataset = get_dataset(
     img_size,
     train_input_img_paths,
     train_target_img_paths,
-    max_dataset_len=12568,
+    max_dataset_len=2000,
 )
 valid_dataset = get_dataset(
     batch_size, img_size, val_input_img_paths, val_target_img_paths
